@@ -1,5 +1,12 @@
-# This is a boilerplate parameters config generated for pipeline 'factorization'
-# using Kedro 0.17.7.
-#
-# Documentation for this file format can be found in "Parameters"
-# Link: https://kedro.readthedocs.io/en/0.17.7/04_kedro_project_setup/02_configuration.html#parameters
+# parameters for modeling pipe
+evaluation:
+  random_seed: 42
+  split_count: 8
+  split_fraction: 0.5
+  fraction: 
+model:
+  random_seed: 42
+  epochs: 10
+  k: 5
+  n_components: 50
+  loss: warp

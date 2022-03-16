@@ -1,6 +1,9 @@
 ##########################
 # KEDRO PROJECT
 
+# ignore mlflow's mlruns
+mlruns
+
 # ignore all local configuration
 conf/local/**
 !conf/local/.gitkeep

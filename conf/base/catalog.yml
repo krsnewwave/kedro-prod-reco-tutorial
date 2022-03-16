@@ -1,4 +1,49 @@
-# Here you can define all your data sets by using simple YAML syntax.
-#
-# Documentation for this file format can be found in "The Data Catalog"
-# Link: https://kedro.readthedocs.io/en/stable/05_data/01_data_catalog.html
+ratings:
+  type: pandas.CSVDataSet
+  filepath: data/01_raw/ratings.dat.gz
+  load_args:
+      compression: 'gzip'
+      sep: '::'
+      nrows: 1000000
+      names: ["userId", "itemId", "rating", "timestamp"]
+items:
+  type: pandas.CSVDataSet
+  filepath: data/01_raw/movies.dat
+  load_args:
+      sep: '::'
+      names: ["itemId", "movieName", "tags"]
+
+idx_to_names:
+  type: pickle.PickleDataSet
+  filepath: data/03_primary/idx_to_names.pkl
+  versioned: True
+
+interactions:
+  type: pickle.PickleDataSet
+  filepath: data/05_model_input/interactions.pkl
+  versioned: True
+
+rid_to_idx:
+  type: pickle.PickleDataSet
+  filepath: data/05_model_input/rid_to_idx.pkl
+  versioned: True
+
+idx_to_rid:
+  type: pickle.PickleDataSet
+  filepath: data/05_model_input/idx_to_rid.pkl
+  versioned: True
+
+cid_to_idx: 
+  type: pickle.PickleDataSet
+  filepath: data/05_model_input/cid_to_idx.pkl
+  versioned: True
+
+idx_to_cid:
+  type: pickle.PickleDataSet
+  filepath: data/05_model_input/idx_to_cid.pkl
+  versioned: True
+
+sp_item_feats:
+  type: pickle.PickleDataSet
+  filepath: data/05_model_input/sp_item_feats.pkl
+  versioned: True
