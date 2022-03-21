@@ -3,7 +3,7 @@ Data prep pipeline
 """
 
 from kedro.pipeline import Pipeline, node, pipeline
-from .nodes import prep_sparse_ratings, prep_item_features
+from .nodes import prep_sparse_ratings, prep_item_features, create_default_item_ranking
 
 
 def create_pipeline(**kwargs) -> Pipeline:
@@ -21,6 +21,13 @@ def create_pipeline(**kwargs) -> Pipeline:
                 inputs=["items", "cid_to_idx", "idx_to_cid"],
                 outputs=["sp_item_feats", "idx_to_names"],
                 name="prep_item_features",
+            ),
+            node(
+                func=create_default_item_ranking,
+                inputs=["ratings", "items", "cid_to_idx", "params:preprocessing"],
+                outputs="item_rank",
+                name="create_default_item_ranking",
             )
+            
         ],
     )

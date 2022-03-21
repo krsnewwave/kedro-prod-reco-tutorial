@@ -6,7 +6,7 @@ evaluation:
   fraction: 
 model:
   random_seed: 42
-  epochs: 10
+  epochs: 3
   k: 5
   n_components: 50
   loss: warp

@@ -19,3 +19,4 @@ kedro-viz~=4.0                                                                 #
 scikit-learn~=1.0                                                              # For modelling in the data science pipeline
 lightfm~=1.16
 tqdm
+annoy==1.17.0

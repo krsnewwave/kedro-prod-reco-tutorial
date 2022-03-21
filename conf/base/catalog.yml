@@ -18,6 +18,12 @@ idx_to_names:
   filepath: data/03_primary/idx_to_names.pkl
   versioned: True
 
+item_rank:
+  type: pandas.CSVDataSet
+  filepath: data/03_primary/default_rank.csv.gz
+  save_args:
+      compression: gzip
+
 interactions:
   type: pickle.PickleDataSet
   filepath: data/05_model_input/interactions.pkl
@@ -47,3 +53,47 @@ sp_item_feats:
   type: pickle.PickleDataSet
   filepath: data/05_model_input/sp_item_feats.pkl
   versioned: True
+
+user_factors:
+  type: pickle.PickleDataSet
+  filepath: data/07_model_output/user_factors.pkl
+  versioned: True
+
+item_factors:
+  type: pickle.PickleDataSet
+  filepath: data/07_model_output/item_factors.pkl
+  versioned: True
+
+user_biases:
+  type: pickle.PickleDataSet
+  filepath: data/07_model_output/user_biases.pkl
+  versioned: True
+
+item_biases:
+  type: pickle.PickleDataSet
+  filepath: data/07_model_output/item_biases.pkl
+  versioned: True
+
+model_metrics:
+  type: kedro_mlflow.io.metrics.MlflowMetricsDataSet
+  prefix: metrics
+
+sample_recos:
+    type: kedro_mlflow.io.artifacts.MlflowArtifactDataSet
+    data_set:
+        type: pandas.CSVDataSet
+        filepath: data/07_model_output/sample_recos.csv
+
+annoy_index:
+  type: prod_reco.commons.datasets.KedroAnnoyIndex
+  filepath: data/07_model_output/annoy_index.ann
+  embedding_length: 50
+  metric: dot
+
+
+# rr_pipe.clf:
+#   type: kedro_mlflow.io.artifacts.MlflowArtifactDataSet
+#   data_set:
+#     type: kedro_mlflow.io.models.MlflowModelSaverDataSet
+#     flavor: mlflow.sklearn
+#     filepath: data/06_models/rr_clf.pickle
