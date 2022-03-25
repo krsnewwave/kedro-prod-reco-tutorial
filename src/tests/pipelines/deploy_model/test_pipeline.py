@@ -1,5 +1,5 @@
 """
-This is a boilerplate test file for pipeline 'deploy_model'
+This is a boilerplate test file for pipeline 'train'
 generated using Kedro 0.17.7.
 Please add your pipeline tests here.
 

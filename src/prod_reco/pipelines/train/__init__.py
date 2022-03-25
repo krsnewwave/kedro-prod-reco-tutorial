@@ -1,5 +1,5 @@
 """
-This is a boilerplate pipeline 'deploy_model'
+This is a boilerplate pipeline 'train'
 generated using Kedro 0.17.7
 """
 

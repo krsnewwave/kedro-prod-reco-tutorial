@@ -10,3 +10,7 @@ model:
   k: 5
   n_components: 50
   loss: warp
+# Parameters for indexing
+index_params:
+  n_trees: 10
+  metric: dot

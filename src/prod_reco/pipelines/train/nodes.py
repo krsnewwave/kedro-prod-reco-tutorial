@@ -7,14 +7,12 @@ from sys import version_info
 from typing import Dict
 
 import cloudpickle
-import mlflow
 import numpy as np
 import pandas as pd
 from annoy import AnnoyIndex
 from kedro_mlflow.io.models import MlflowModelLoggerDataSet
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.neighbors import NearestNeighbors
-import time
+from lightfm import LightFM
+from lightfm.evaluation import precision_at_k
 
 from prod_reco.commons.models import KedroMLFlowLightFM
 from prod_reco.commons.recommender_utils import ITEM_ID, USER_ID, RecommenderUtils
@@ -31,114 +29,111 @@ NUM_USERS_RANK_SORT_NAME = "num_users"
 MOVIE_NAME = "movie_name"
 
 
-def build_nn(item_factors, params: Dict):
-    metric = params["metric"]
-    n_trees = params["n_trees"]
+def split_train_test(interactions, params: Dict):
+    split_count = params["split_count"]
+    split_fraction = params["split_fraction"]
+    fraction = params["fraction"]
+    random_seed = params["random_seed"]
 
-    # factors = item_factors.shape[1]
-    # # dot product index
-    # annoy_idx = AnnoyIndex(factors, metric)
-    # for i in range(item_factors.shape[0]):
-    #     v = item_factors[i]
-    #     annoy_idx.add_item(i, v)
+    np.random.seed(random_seed)
 
-    # annoy_idx.build(n_trees)
-    # return annoy_idx
+    train, test, test_users = RecommenderUtils.train_test_split_sparse(
+        interactions, split_count, split_fraction=split_fraction, fraction=fraction)
 
-    nn_model = NearestNeighbors(
-        n_neighbors=n_trees, algorithm='brute', metric='cosine')
-    nn_model.fit(item_factors)
-    print(nn_model.n_samples_fit_)
-    return nn_model
+    # create a train set where the train-only users have unknown recos
+    # this is for training set evaluation
+    eval_train = train.copy()
+    non_eval_users = list(set(range(train.shape[0])) - set(test_users))
 
-
-def validate_nn(nn_model: NearestNeighbors, idx_to_names: Dict, item_factors: np.array):
-    # 1558 = Dark Knight
-    # 1042 = Ratatouille
-    # 2196 = Spy who loved me
-    # 1246 = Rambo
-    # 818 = Rashomon
-    # 2481 = The Haunting
-    item_ids_for_sampling = [1558, 1042, 2196, 1246, 818, 2481]
-    for item_id in item_ids_for_sampling:
-        query_item_factors = item_factors[item_id]
-        nearest_movies(item_id, query_item_factors, nn_model, idx_to_names)
+    eval_train = eval_train.tolil()
+    for u in non_eval_users:
+        eval_train[u, :] = 0.0
+    eval_train = eval_train.tocsr()
+    return {"train": train, "test": test, "eval_train": eval_train}
 
 
-def nearest_movies(item_id: int, query_item_factors: np.array, index: NearestNeighbors, idx_to_names: Dict, n: int = 10):
-    nn = index.kneighbors(X=query_item_factors.reshape(1, -1),
-                          n_neighbors=n, return_distance=False)
-    nn = nn[0]
-    titles = [idx_to_names[i] for i in nn]
-    related_items = "\n".join(titles)
+def factorize(train, test, eval_train, sp_item_feats, params: Dict):
 
-    str_message = 'Closest to %s : \n' % idx_to_names[item_id]
-    str_message += related_items
+    random_seed = params["random_seed"]
+    epochs = params["epochs"]
+    k = params["k"]
+    n_components = params["n_components"]
+    loss = params["loss"]
+
+    list_train_prec = []
+    list_test_prec = []
+    warp_model = LightFM(no_components=n_components,
+                         loss=loss, random_state=random_seed)
+    for _ in range(epochs):
+        warp_model.fit_partial(train, item_features=sp_item_feats,
+                               num_threads=2, epochs=1)
+        test_prec = precision_at_k(
+            warp_model, test, train_interactions=train, k=k, item_features=sp_item_feats)
+        train_prec = precision_at_k(
+            warp_model, eval_train, train_interactions=None, k=k, item_features=sp_item_feats)
+
+        test_prec = np.mean(test_prec)
+        train_prec = np.mean(train_prec)
+
+        print(f"Train: {train_prec}, Test: {test_prec}")
+
+        list_test_prec.append(test_prec)
+        list_train_prec.append(train_prec)
+
+    # TODO: take history using step
+    dict_metrics = {f"train_precision_at_{k}": {"value": train_prec, "step": 0},
+                    f"test_precision_at_{k}": {"value": test_prec, "step": 0}}
+
+    item_biases, item_factors = warp_model.get_item_representations(
+        features=sp_item_feats)
+    user_biases, user_factors = warp_model.get_user_representations()
+
+    return {"user_factors": user_factors,
+            "item_factors": item_factors,
+            "user_biases": user_biases,
+            "item_biases": item_biases,
+            "model_metrics": dict_metrics}
+
+
+def produce_sample_recos(user_factors, item_factors, user_biases, item_biases,
+                         idx_to_names, idx_to_rid):
+    """Produce sample recommendations that could be used for smoke testing.
+    Based off of https://github.com/lyst/lightfm/issues/617
+
+    Args:
+        user_factors (np.array): _description_
+        item_factors (np.array): _description_
+        user_biases (np.array): _description_
+        item_biases (np.array): _description_
+        idx_to_names (dict): mapping array
+    """
+    # get only 3 users and 100 items
+    m = 3
+    n = 100
+    user_factors = user_factors[:m, :]
+    user_biases = user_biases[:m]
+
+    item_factors = item_factors[:n, :]
+    item_biases = item_biases[:n]
+
+    scores = RecommenderUtils.produce_scores(
+        item_factors, item_biases, user_factors, user_biases)
+    # now you can sort and assert things here. I'll just let it pass
+    # shape: 5x100
+    assert scores.shape[0] == m
+    assert scores.shape[1] == n
+    sorted_scores_argsort = np.argsort(scores, axis=1)
 
     logger = logging.getLogger(__name__)
-    logger.info(str_message)
+    list_dict_recos = []
+    for idx in range(len(sorted_scores_argsort)):
+        recos = [idx_to_names[v] for v in sorted_scores_argsort[idx]]
+        logger.info(f"Recos for {idx_to_rid[idx]}:")
+        logger.info(recos)
 
+        list_dict_recos.append({"userId": idx_to_rid[idx], "recos": recos})
 
-def recommend_node(reco_model, model_input, item_factors, item_biases,
-                   user_factors, user_biases, idx_to_names, item_rank):
-    if isinstance(model_input, dict) and __validate_as_warm_user_prediction(model_input):
-        items = model_input[ITEM_ID]
-        user_id = model_input[USER_ID]
-        # get nearest neighbors
-        list_nn = []
-        for item_id in items:
-            query_item_factors = item_factors[item_id]
-            list_nn.append(nearest_movies(
-                item_id, query_item_factors, reco_model, idx_to_names, N_NEIGHBORS))
-
-        # get indexes of items
-        item_factors = item_factors[items]
-        item_biases = item_biases[items]
-
-        # get index of user
-        user_factors = user_factors[user_id]
-        user_bias = user_biases[user_id]
-
-        # perform scoring
-        scores = RecommenderUtils.produce_scores(
-            item_factors, item_biases, user_factors, user_bias)
-
-        # argsort then reindex to old
-        sorted_items = np.array(items)[np.argsort(scores)]
-
-        # get item names
-        recos = [idx_to_names[v] for v in sorted_items][:N_RECOS]
-        return recos
-
-    elif isinstance(model_input, list) and len(model_input[ITEM_ID]) > 0:
-        items = model_input[ITEM_ID]
-        # get nearest neighbors
-        list_nn = []
-        for item_id in items:
-            query_item_factors = item_factors[item_id]
-            list_nn.append(nearest_movies(
-                item_id, query_item_factors, reco_model, idx_to_names, N_NEIGHBORS))
-
-        # get ranking (pandas)
-        df_rank = item_rank.set_index(ITEM_POSITIONAL_INDEX_NAME)
-        df_rank_subset = df_rank.loc[list_nn]
-        df_rank_subset = df_rank_subset.sort_values(
-            by=NUM_USERS_RANK_SORT_NAME, ascending=False)
-        return df_rank_subset[MOVIE_NAME][:N_RECOS].tolist()
-    else:
-        raise ValueError("Please input either dict or list with the correct keys")
-
-
-def __validate_as_warm_user_prediction(model_input):
-    # correct keys
-    is_warm_user = USER_ID in model_input
-    is_warm_user = is_warm_user and ITEM_ID in model_input
-    # correct value types
-    is_warm_user = is_warm_user and isinstance(model_input[USER_ID], int)
-    is_warm_user = is_warm_user and isinstance(model_input[ITEM_ID], list)
-    # more than one
-    is_warm_user = is_warm_user and len(model_input[ITEM_ID]) > 0
-    return is_warm_user
+    return pd.DataFrame(list_dict_recos)
 
 
 def build_index(item_factors, params: Dict):
@@ -180,13 +175,12 @@ def nearest_movies_annoy(item_id, index, idx_to_names, n=10):
     logger.info(str_message)
 
 
-def upload_to_mlflow(annoy_index: AnnoyIndex, idx_to_names: Dict,
+def upload_to_mlflow(idx_to_names: Dict,
                      item_factors: np.array, user_factors: np.array, item_biases: np.array,
                      user_biases: np.array, item_rank: pd.DataFrame, params: Dict):
     """'Passthrough functions to enable uploading to mlflow for deployment
 
     Args:
-        annoy_index (AnnoyIndex): _description_
         idx_to_names (Dict): _description_
         item_factors (np.array): _description_
         user_factors (np.array): _description_
@@ -238,14 +232,13 @@ def upload_to_mlflow(annoy_index: AnnoyIndex, idx_to_names: Dict,
             flavor="mlflow.pyfunc",
             pyfunc_workflow="python_model",
             save_args={
-                "conda_env": conda_env,
                 "artifacts": artifacts
             },
         )
         mlflow_model_logger.save(KedroMLFlowLightFM())
 
         __test_artifacts(idx_to_names, params, item_rank, item_factors,
-                        user_factors, item_biases, user_biases)
+                         user_factors, item_biases, user_biases)
 
 
 def __test_artifacts(idx_to_names, params, item_rank, item_factors, user_factors, item_biases, user_biases):
@@ -290,25 +283,3 @@ def __test_artifacts(idx_to_names, params, item_rank, item_factors, user_factors
 def test_uploaded_artifact():
     # TODO: load the mlflow model, then serve
     pass
-
-
-# TODO: build project, then pip to local
-conda_env = None
-# conda_env = {
-#     'channels': ['defaults'],
-#     'dependencies': [
-#         'python={}'.format(PYTHON_VERSION),
-#         'pip',
-#         {
-#             'pip': [
-#                 f"mlflow=={mlflow.__version__}",
-#                 "annoy",
-#                 f"cloudpickle=={cloudpickle.__version__}",
-#                 f"numpy=={np.__version__}",
-#                 f"pandas=={pd.__version__}",
-#                 "prod_reco"
-#             ],
-#         },
-#     ],
-#     'name': 'reco_env'
-# }
