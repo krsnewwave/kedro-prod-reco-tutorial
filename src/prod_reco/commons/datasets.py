@@ -2,10 +2,11 @@ from annoy import AnnoyIndex
 from kedro.io import AbstractDataSet
 from kedro.io.core import get_filepath_str, get_protocol_and_path
 from typing import Dict, Any
+from pathlib import Path
 
 
 class KedroAnnoyIndex(AbstractDataSet):
-    """Annoy wrapper for kedro
+    """Wrap ANNOY so it can be included in Kedro data catalog
 
     Args:
         AbstractDataSet (AbstractDataset): Kedro abstract class
@@ -19,7 +20,11 @@ class KedroAnnoyIndex(AbstractDataSet):
             embedding_length (int): _description_
             metric (str): _description_
         """
-        self.filepath = filepath
+        # protocol, path = get_protocol_and_path(filepath)
+        # self._protocol = protocol
+        # self._filepath = PurePosixPath(path)
+        self._filepath = Path(filepath)
+
         self.embedding_length = embedding_length
         self.metric = metric
 
@@ -30,7 +35,7 @@ class KedroAnnoyIndex(AbstractDataSet):
             AnnoyIndex: _description_
         """
         annoy_index = AnnoyIndex(self.embedding_length, self.metric)
-        annoy_index.load(self.filepath)
+        annoy_index.load(self._filepath.as_posix())
         return annoy_index
 
     def _save(self, annoy_idx: AnnoyIndex) -> None:
@@ -39,7 +44,7 @@ class KedroAnnoyIndex(AbstractDataSet):
         Args:
             annoy_idx (AnnoyIndex): _description_
         """
-        annoy_idx.save(self.filepath)
+        annoy_idx.save(self._filepath.as_posix())
 
     def _describe(self) -> Dict[str, Any]:
         """Describes dataset`
@@ -47,4 +52,4 @@ class KedroAnnoyIndex(AbstractDataSet):
         Returns:
             Dict[str, Any]: _description_
         """
-        return dict(filepath=self.filepath, embedding_length=self.embedding_length, metric=self.metric)
+        return dict(filepath=self._filepath, embedding_length=self.embedding_length, metric=self.metric)

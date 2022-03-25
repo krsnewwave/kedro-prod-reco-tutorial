@@ -6,6 +6,12 @@ from typing import List
 from sklearn.metrics.pairwise import cosine_similarity
 import traceback
 
+USER_ID = "userId"
+ITEM_ID = "itemId"
+RATING = "rating"
+ITEM_NAME = "movieName"
+TAGS = "tags"
+
 class RecommenderUtils():
     def __init__(self, user_id = "userId", item_id = "itemId", rating="rating"):
         self.userId = user_id
@@ -476,3 +482,18 @@ class RecommenderUtils():
         # Test and training are truly disjoint
         assert(train.multiply(test).nnz == 0)
         return train.tocsr(), test.tocsr(), user_index
+
+    @staticmethod
+    def produce_scores(item_factors, item_biases, user_factors, user_biases):
+        # combine item_factors with biases for dot product
+        item_factors = np.concatenate(
+            (item_factors, np.ones((item_biases.shape[0], 1))), axis=1)
+        item_factors = np.concatenate((item_factors, item_biases.reshape(-1, 1)), axis=-1)
+
+        # combine user_factors with biases for dot product
+        user_factors = np.concatenate((user_factors, user_biases.reshape(-1, 1)), axis=-1)
+        user_factors = np.concatenate(
+            (user_factors, np.ones((user_biases.shape[0], 1))), axis=1)
+
+        scores = user_factors.dot(item_factors.T)
+        return scores

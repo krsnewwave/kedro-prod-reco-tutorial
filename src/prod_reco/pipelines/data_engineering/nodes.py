@@ -9,13 +9,7 @@ import scipy
 from sklearn.feature_extraction import DictVectorizer
 
 from prod_reco.commons.recommender_utils import RecommenderUtils
-
-# PARAMETERS
-USER_ID = "userId"
-ITEM_ID = "itemId"
-RATING = "rating"
-ITEM_NAME = "movieName"
-TAGS = "tags"
+from prod_reco.commons.recommender_utils import USER_ID, ITEM_ID, RATING
 
 
 def __default_filter_ratings(df_ratings, params: Dict):
@@ -101,7 +95,11 @@ def create_default_item_ranking(df_ratings: pd.DataFrame, df_items: pd.DataFrame
     # sort
     df_item_rank = df_item_rank.sort_values(
         by=["year", "num_users"], ascending=[False, False])
-    print(df_item_rank[:40])
+
+    # add additional column (positional index)
+    df_item_rank = df_item_rank.join(pd.Series(cid_to_idx, name="idx"))
+    df_item_rank = df_item_rank.reset_index()
+
     return df_item_rank
 
 

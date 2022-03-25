@@ -3,6 +3,7 @@
 
 # ignore mlflow's mlruns
 mlruns
+mlflow
 
 # ignore all local configuration
 conf/local/**

@@ -6,7 +6,6 @@ from kedro.framework.hooks import hook_impl
 from kedro.io import DataCatalog
 from kedro.versioning import Journal
 
-
 class ProjectHooks:
     @hook_impl
     def register_config_loader(

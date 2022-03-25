@@ -66,7 +66,7 @@ def factorize(train, test, eval_train, sp_item_feats, params: Dict):
     dict_metrics = {f"train_precision_at_{k}": {"value" : train_prec, "step" : 0},
                     f"test_precision_at_{k}": {"value" : test_prec, "step" : 0}}
 
-    item_biases, item_factors = warp_model.get_item_representations()
+    item_biases, item_factors = warp_model.get_item_representations(features=sp_item_feats)
     user_biases, user_factors = warp_model.get_user_representations()
 
     # TODO: put these datasets into mlflow
@@ -99,19 +99,9 @@ def produce_sample_recos(user_factors, item_factors, user_biases, item_biases,
     item_factors = item_factors[:n, :]
     item_biases = item_biases[:n]
 
-    # combine item_factors with biases for dot product
-    item_factors = np.concatenate(
-        (item_factors, np.ones((item_biases.shape[0], 1))), axis=1)
-    item_factors = np.concatenate((item_factors, item_biases.reshape(-1, 1)), axis=1)
-
-    # combine user_factors with biases for dot product
-    user_factors = np.concatenate((user_factors, user_biases.reshape(-1, 1)), axis=1)
-    user_factors = np.concatenate(
-        (user_factors, np.ones((user_biases.shape[0], 1))), axis=1)
-
+    scores = RecommenderUtils.produce_scores(item_factors, item_biases, user_factors, user_biases)
     # now you can sort and assert things here. I'll just let it pass
     # shape: 5x100
-    scores = user_factors.dot(item_factors.T)
     assert scores.shape[0] == m
     assert scores.shape[1] == n
     sorted_scores_argsort = np.argsort(scores, axis=1)
