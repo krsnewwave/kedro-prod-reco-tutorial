@@ -20,3 +20,4 @@ scikit-learn~=1.0                                                              #
 lightfm~=1.16
 tqdm
 annoy==1.17.0
+optuna==2.10.0

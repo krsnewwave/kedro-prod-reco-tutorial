@@ -19,8 +19,10 @@ def register_pipelines() -> Dict[str, Pipeline]:
     """
     de_pipe = data_engineering.create_pipeline()
     train_pipe = train.create_pipeline()
+    ho_pipe = train.create_pipeline(hyperparam_optimize=True)
     return {
         "__default__": de_pipe + train_pipe,
         "de": de_pipe,
-        "train": train_pipe
+        "train": train_pipe,
+        "optimize" : ho_pipe,
     }

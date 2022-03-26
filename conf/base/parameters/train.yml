@@ -6,9 +6,15 @@ evaluation:
   fraction: 
 model:
   random_seed: 42
-  epochs: 3
+  epochs: 10
   k: 5
   n_components: 50
+  loss: warp
+model_experiment_a:
+  random_seed: 42
+  epochs: 10
+  k: 5
+  n_components: 25
   loss: warp
 # Parameters for indexing
 index_params:

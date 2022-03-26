@@ -3,30 +3,37 @@ Deployment phase, creating embeddings and index
 """
 import logging
 import tempfile
+from functools import partial
 from sys import version_info
 from typing import Dict
 
 import cloudpickle
 import numpy as np
+import optuna
 import pandas as pd
 from annoy import AnnoyIndex
+from kedro_mlflow.io.artifacts import MlflowArtifactDataSet
 from kedro_mlflow.io.models import MlflowModelLoggerDataSet
 from lightfm import LightFM
 from lightfm.evaluation import precision_at_k
+from optuna.integration.mlflow import MLflowCallback
 
+import mlflow
 from prod_reco.commons.models import KedroMLFlowLightFM
+from prod_reco.commons.datasets import KedroAnnoyIndex
 from prod_reco.commons.recommender_utils import ITEM_ID, USER_ID, RecommenderUtils
 
 PYTHON_VERSION = "{major}.{minor}.{micro}".format(major=version_info.major,
                                                   minor=version_info.minor,
                                                   micro=version_info.micro)
-# TODO: hardcoded n recos
+# TODO: hardcoded
 N_RECOS = 10
 N_NEIGHBORS = 5
 N_RECOS = 10
 ITEM_POSITIONAL_INDEX_NAME = "idx"
 NUM_USERS_RANK_SORT_NAME = "num_users"
 MOVIE_NAME = "movie_name"
+INDEX_PATH = "data/07_model_output/deployed/annoy_index.ann"
 
 
 def split_train_test(interactions, params: Dict):
@@ -53,32 +60,26 @@ def split_train_test(interactions, params: Dict):
 
 
 def factorize(train, test, eval_train, sp_item_feats, params: Dict):
+    """Train model
 
+    Args:
+        train (COO sparse array): _description_
+        test (COO sparse array): _description_
+        eval_train (COO sparse array): train set without test users
+        sp_item_feats (np array): _description_
+        params (Dict): _description_
+
+    Returns:
+        _type_: _description_
+    """
     random_seed = params["random_seed"]
     epochs = params["epochs"]
     k = params["k"]
     n_components = params["n_components"]
     loss = params["loss"]
 
-    list_train_prec = []
-    list_test_prec = []
-    warp_model = LightFM(no_components=n_components,
-                         loss=loss, random_state=random_seed)
-    for _ in range(epochs):
-        warp_model.fit_partial(train, item_features=sp_item_feats,
-                               num_threads=2, epochs=1)
-        test_prec = precision_at_k(
-            warp_model, test, train_interactions=train, k=k, item_features=sp_item_feats)
-        train_prec = precision_at_k(
-            warp_model, eval_train, train_interactions=None, k=k, item_features=sp_item_feats)
-
-        test_prec = np.mean(test_prec)
-        train_prec = np.mean(train_prec)
-
-        print(f"Train: {train_prec}, Test: {test_prec}")
-
-        list_test_prec.append(test_prec)
-        list_train_prec.append(train_prec)
+    warp_model, test_prec, train_prec = train_model(
+        train, test, eval_train, sp_item_feats, random_seed, epochs, k, n_components, loss)
 
     # TODO: take history using step
     dict_metrics = {f"train_precision_at_{k}": {"value": train_prec, "step": 0},
@@ -92,7 +93,111 @@ def factorize(train, test, eval_train, sp_item_feats, params: Dict):
             "item_factors": item_factors,
             "user_biases": user_biases,
             "item_biases": item_biases,
-            "model_metrics": dict_metrics}
+            "model_metrics": dict_metrics,
+            "embedding_size": n_components}
+
+
+def train_model(train, test, eval_train, sp_item_feats,
+                random_seed, epochs, k, n_components, loss):
+    """Trains model
+
+    Args:
+        train (_type_): _description_
+        test (_type_): _description_
+        eval_train (_type_): _description_
+        sp_item_feats (_type_): _description_
+        random_seed (_type_): _description_
+        epochs (_type_): _description_
+        k (_type_): _description_
+        n_components (_type_): _description_
+        loss (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    warp_model = LightFM(no_components=n_components,
+                         loss=loss, random_state=random_seed)
+    for _ in range(epochs):
+        warp_model.fit_partial(train, item_features=sp_item_feats,
+                               num_threads=2, epochs=1)
+        test_prec = precision_at_k(
+            warp_model, test, train_interactions=train, k=k, item_features=sp_item_feats)
+        train_prec = precision_at_k(
+            warp_model, eval_train, train_interactions=None, k=k, item_features=sp_item_feats)
+
+        test_prec = np.mean(test_prec)
+        train_prec = np.mean(train_prec)
+
+        logger = logging.getLogger(__name__)
+        logger.info(f"Train: {train_prec}, Test: {test_prec}")
+
+    return warp_model, test_prec, train_prec
+
+
+def optuna_objective(train, test, eval_train, sp_item_feats, params: Dict,
+                     trial: optuna.trial):
+    k = params["k"]
+    random_seed = params["random_seed"]
+    epochs = params["epochs"]
+    loss = params["loss"]
+
+    # optimize this
+    n_components = trial.suggest_int("n_components", 10, 80)
+
+    _, test_prec, _ = train_model(train, test, eval_train, sp_item_feats,
+                                  random_seed, epochs, k, n_components, loss)
+    return test_prec
+
+
+def factorize_optimize(train, test, eval_train, sp_item_feats, params: Dict):
+    k = params["k"]
+    random_seed = params["random_seed"]
+    epochs = params["epochs"]
+    loss = params["loss"]
+
+    study = optuna.create_study(study_name="optimize warp", direction="maximize")
+    fun_objective = partial(optuna_objective, train, test,
+                            eval_train, sp_item_feats, params)
+
+    # mlflow callback for tracking
+    # additional setting: nested runs
+    mlflc = MLflowCallback(
+        tracking_uri=mlflow.get_tracking_uri(),
+        metric_name=f"test_precision_at_{k}",
+        nest_trials=True
+    )
+
+    logger = logging.getLogger(__name__)
+    logger.info("Optimizing model hyperparams")
+    # increase trials for better success (>100)
+    study.optimize(fun_objective, n_trials=10, callbacks=[mlflc])
+
+    # storing best value and the model
+    logger.info(f"Training best model (params: {study.best_params})")
+    n_components = study.best_params["n_components"]
+    # logging new parameter in MLFlow. TODO: how to do this better in the framework?
+    # Hence, there are two n_components in the framework when using this node
+    # Note that 'model.n_components' has already been logged even before
+    #   this node ran (through kedro-mlflow hooks).
+    mlflow.log_param("n_components", n_components)
+
+    warp_model, test_prec, train_prec = train_model(
+        train, test, eval_train, sp_item_feats,
+        random_seed, epochs, k, n_components, loss)
+
+    dict_metrics = {f"train_precision_at_{k}": {"value": train_prec, "step": 0},
+                    f"test_precision_at_{k}": {"value": test_prec, "step": 0}}
+
+    item_biases, item_factors = warp_model.get_item_representations(
+        features=sp_item_feats)
+    user_biases, user_factors = warp_model.get_user_representations()
+
+    return {"user_factors": user_factors,
+            "item_factors": item_factors,
+            "user_biases": user_biases,
+            "item_biases": item_biases,
+            "model_metrics": dict_metrics,
+            "embedding_size": n_components}
 
 
 def produce_sample_recos(user_factors, item_factors, user_biases, item_biases,
@@ -148,16 +253,25 @@ def build_index(item_factors, params: Dict):
         annoy_idx.add_item(i, v)
 
     annoy_idx.build(n_trees)
-    return annoy_idx
+    # save
+    annoy_dataset = MlflowArtifactDataSet(data_set={
+        "type": KedroAnnoyIndex,
+        "filepath": INDEX_PATH,
+        "embedding_length": factors,
+        "metric": metric
+    })
+    annoy_dataset.save(data=annoy_idx)
+    return annoy_dataset
 
 
-def validate_index(annoy_index: AnnoyIndex, idx_to_names: Dict):
+def validate_index(kedro_annoy_dataset: KedroAnnoyIndex, idx_to_names: Dict):
     # 1558 = Dark Knight
     # 1042 = Ratatouille
     # 2196 = Spy who loved me
     # 1246 = Rambo
     # 818 = Rashomon
     # 2481 = The Haunting
+    annoy_index = kedro_annoy_dataset.load()
     item_ids_for_sampling = [1558, 1042, 2196, 1246, 818, 2481]
     for item_id in item_ids_for_sampling:
         nearest_movies_annoy(item_id, annoy_index, idx_to_names)
@@ -227,7 +341,6 @@ def upload_to_mlflow(idx_to_names: Dict,
             "params": params_file.name
         }
 
-        # mlflow.pyfunc.save_model(python_model=KedroMLFlowLightFM(), artifacts=artifacts)
         mlflow_model_logger = MlflowModelLoggerDataSet(
             flavor="mlflow.pyfunc",
             pyfunc_workflow="python_model",
@@ -237,8 +350,9 @@ def upload_to_mlflow(idx_to_names: Dict,
         )
         mlflow_model_logger.save(KedroMLFlowLightFM())
 
-        __test_artifacts(idx_to_names, params, item_rank, item_factors,
-                         user_factors, item_biases, user_biases)
+        # comment this out to test uploaded artifacts
+        # __test_artifacts(idx_to_names, params, item_rank, item_factors,
+        #                  user_factors, item_biases, user_biases)
 
 
 def __test_artifacts(idx_to_names, params, item_rank, item_factors, user_factors, item_biases, user_biases):

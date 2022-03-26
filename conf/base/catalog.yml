@@ -82,62 +82,13 @@ sample_recos:
         type: pandas.CSVDataSet
         filepath: data/07_model_output/sample_recos.csv
 
-
-# deployed namespace
-annoy_index:
-  type: kedro_mlflow.io.artifacts.MlflowArtifactDataSet
-  data_set:
-    type: prod_reco.commons.datasets.KedroAnnoyIndex
-    filepath: data/07_model_output/deployed/annoy_index.ann
-    embedding_length: 50
-    metric: dot
-
-nn_index:
-  type: kedro_mlflow.io.artifacts.MlflowArtifactDataSet
-  data_set:
-    type: pickle.PickleDataSet
-    filepath: data/07_model_output/deployed/nn_model.pkl
-
-deployed.recommender:
-  type: kedro_mlflow.io.models.MlflowModelLoggerDataSet
-  flavor: mlflow.pyfunc
-  pyfunc_workflow: python_model
-
-deployed.item_rank:
-  type: kedro_mlflow.io.artifacts.MlflowArtifactDataSet
-  data_set:
-    type: pandas.CSVDataSet
-    filepath: data/07_model_output/deployed/default_rank.csv
-
-deployed.user_factors:
-  type: kedro_mlflow.io.artifacts.MlflowArtifactDataSet
-  data_set:
-    type: pickle.PickleDataSet
-    filepath: data/07_model_output/deployed/user_factors.pkl
-
-deployed.item_factors:
-  type: kedro_mlflow.io.artifacts.MlflowArtifactDataSet
-  data_set:
-    type: pickle.PickleDataSet
-    filepath: data/07_model_output/deployed/item_factors.pkl
-
-deployed.user_biases:
-  type: kedro_mlflow.io.artifacts.MlflowArtifactDataSet
-  data_set:
-    type: pickle.PickleDataSet
-    filepath: data/07_model_output/deployed/user_biases.pkl
-
-deployed.item_biases:
-  type: kedro_mlflow.io.artifacts.MlflowArtifactDataSet
-  data_set:
-    type: pickle.PickleDataSet
-    filepath: data/07_model_output/deployed/item_biases.pkl
-
-deployed.idx_to_names:
-  type: kedro_mlflow.io.artifacts.MlflowArtifactDataSet
-  data_set:
-    type: pickle.PickleDataSet
-    filepath: data/07_model_output/deployed/idx_to_names.pkl
+# annoy_index:
+#   type: kedro_mlflow.io.artifacts.MlflowArtifactDataSet
+#   data_set:
+#     type: prod_reco.commons.datasets.KedroAnnoyIndex
+#     filepath: data/07_model_output/deployed/annoy_index.ann
+#     embedding_length: 50
+#     metric: dot
 
 # rr_pipe.clf:
 #   type: kedro_mlflow.io.artifacts.MlflowArtifactDataSet

@@ -4,6 +4,7 @@
 # ignore mlflow's mlruns
 mlruns
 mlflow
+BLOG-NOTES.md
 
 # ignore all local configuration
 conf/local/**
