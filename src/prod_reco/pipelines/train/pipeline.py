@@ -31,8 +31,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                          "item_factors": "item_factors",
                          "user_biases": "user_biases",
                          "item_biases": "item_biases",
-                         "model_metrics": "model_metrics",
-                         "embedding_size" : "embedding_size"},
+                         "model_metrics": "model_metrics"},
                 name="factorize",
             ),
             node(
@@ -50,12 +49,12 @@ def create_pipeline(**kwargs) -> Pipeline:
             node(
                 func=validate_index,
                 inputs=["kedro_annoy_dataset", "idx_to_names"],
-                outputs=None,
+                outputs="validated_kedro_annoy_dataset",
                 name="validate_index",
             ),
             node(
                 func=upload_to_mlflow,
-                inputs=["idx_to_names", "item_factors", "user_factors",
+                inputs=["validated_kedro_annoy_dataset", "idx_to_names", "item_factors", "user_factors",
                         "item_biases", "user_biases", "item_rank", "params:index_params"],
                 outputs=None,
                 name="upload_to_mlflow",

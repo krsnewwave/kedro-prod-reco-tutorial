@@ -30,21 +30,15 @@ class KedroMLFlowLightFM(mlflow.pyfunc.PythonModel):
         self.item_biases = np.load(contents["item_biases"])
         self.user_biases = np.load(contents["user_biases"])
         self.item_rank = pd.read_csv(contents["item_rank"])
+        
 
         # create annoy index
+        annoy_index_file_path = contents["annoy_index"]
         params = cloudpickle.load(open(contents["params"], 'rb'))
         metric = params["metric"]
-        n_trees = params["n_trees"]
-
-        factors = self.item_factors.shape[1]
-        # dot product index
-        annoy_index = AnnoyIndex(factors, metric)
-        for i in range(self.item_factors.shape[0]):
-            v = self.item_factors[i]
-            annoy_index.add_item(i, v)
-
-        annoy_index.build(n_trees)
-        self.annoy_index = annoy_index
+        
+        self.annoy_index = AnnoyIndex(self.item_factors.shape[1], metric)
+        self.annoy_index.load(annoy_index_file_path)
 
     def predict(self, context, model_input : pd.DataFrame):
         """Prediction
@@ -103,15 +97,4 @@ class KedroMLFlowLightFM(mlflow.pyfunc.PythonModel):
                 by=NUM_USERS_RANK_SORT_NAME, ascending=False)
             return df_rank_subset[MOVIE_NAME][:N_RECOS].tolist()
         else:
-            raise ValueError("Please input either dict or list with the correct keys")
-
-    # def __validate_as_warm_user_prediction(self, model_input):
-    #     # correct keys
-    #     is_warm_user = USER_ID_KEY in model_input
-    #     is_warm_user = is_warm_user and ITEM_ID_KEY in model_input
-    #     # correct value types
-    #     is_warm_user = is_warm_user and isinstance(model_input[USER_ID_KEY], int)
-    #     is_warm_user = is_warm_user and isinstance(model_input[ITEM_ID_KEY], list)
-    #     # more than one
-    #     is_warm_user = is_warm_user and len(model_input[ITEM_ID_KEY]) > 0
-    #     return is_warm_user
+            raise ValueError("Please input the correct format")

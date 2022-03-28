@@ -93,8 +93,7 @@ def factorize(train, test, eval_train, sp_item_feats, params: Dict):
             "item_factors": item_factors,
             "user_biases": user_biases,
             "item_biases": item_biases,
-            "model_metrics": dict_metrics,
-            "embedding_size": n_components}
+            "model_metrics": dict_metrics}
 
 
 def train_model(train, test, eval_train, sp_item_feats,
@@ -196,8 +195,7 @@ def factorize_optimize(train, test, eval_train, sp_item_feats, params: Dict):
             "item_factors": item_factors,
             "user_biases": user_biases,
             "item_biases": item_biases,
-            "model_metrics": dict_metrics,
-            "embedding_size": n_components}
+            "model_metrics": dict_metrics}
 
 
 def produce_sample_recos(user_factors, item_factors, user_biases, item_biases,
@@ -276,6 +274,8 @@ def validate_index(kedro_annoy_dataset: KedroAnnoyIndex, idx_to_names: Dict):
     for item_id in item_ids_for_sampling:
         nearest_movies_annoy(item_id, annoy_index, idx_to_names)
 
+    return kedro_annoy_dataset
+
 
 def nearest_movies_annoy(item_id, index, idx_to_names, n=10):
     nn = index.get_nns_by_item(item_id, n)
@@ -289,12 +289,13 @@ def nearest_movies_annoy(item_id, index, idx_to_names, n=10):
     logger.info(str_message)
 
 
-def upload_to_mlflow(idx_to_names: Dict,
+def upload_to_mlflow(kedro_annoy_dataset: KedroAnnoyIndex, idx_to_names: Dict,
                      item_factors: np.array, user_factors: np.array, item_biases: np.array,
                      user_biases: np.array, item_rank: pd.DataFrame, params: Dict):
     """'Passthrough functions to enable uploading to mlflow for deployment
 
     Args:
+        kedro_annoy_dataset (KedroAnnoyIndex): _description_
         idx_to_names (Dict): _description_
         item_factors (np.array): _description_
         user_factors (np.array): _description_
@@ -314,6 +315,7 @@ def upload_to_mlflow(idx_to_names: Dict,
             tempfile.NamedTemporaryFile(prefix="params_file-") as params_file, \
             tempfile.NamedTemporaryFile(prefix="item_rank_file-", mode='w') as item_rank_file:
 
+        # save in temporary files
         cloudpickle.dump(idx_to_names, idx_to_names_file)
         cloudpickle.dump(params, params_file)
         np.save(item_factors_file, item_factors)
@@ -332,6 +334,7 @@ def upload_to_mlflow(idx_to_names: Dict,
         item_rank_file.flush()
 
         artifacts = {
+            "annoy_index" : kedro_annoy_dataset._filepath.as_posix(),
             "idx_to_names": idx_to_names_file.name,
             "item_factors": item_factors_file.name,
             "user_factors": user_factors_file.name,

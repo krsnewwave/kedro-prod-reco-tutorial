@@ -81,18 +81,3 @@ sample_recos:
     data_set:
         type: pandas.CSVDataSet
         filepath: data/07_model_output/sample_recos.csv
-
-# annoy_index:
-#   type: kedro_mlflow.io.artifacts.MlflowArtifactDataSet
-#   data_set:
-#     type: prod_reco.commons.datasets.KedroAnnoyIndex
-#     filepath: data/07_model_output/deployed/annoy_index.ann
-#     embedding_length: 50
-#     metric: dot
-
-# rr_pipe.clf:
-#   type: kedro_mlflow.io.artifacts.MlflowArtifactDataSet
-#   data_set:
-#     type: kedro_mlflow.io.models.MlflowModelSaverDataSet
-#     flavor: mlflow.sklearn
-#     filepath: data/06_models/rr_clf.pickle
