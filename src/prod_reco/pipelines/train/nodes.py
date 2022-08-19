@@ -1,6 +1,7 @@
 """
 Deployment phase, creating embeddings and index
 """
+import os
 import logging
 import tempfile
 from functools import partial
@@ -33,7 +34,8 @@ N_RECOS = 10
 ITEM_POSITIONAL_INDEX_NAME = "idx"
 NUM_USERS_RANK_SORT_NAME = "num_users"
 MOVIE_NAME = "movie_name"
-INDEX_PATH = "data/07_model_output/deployed/annoy_index.ann"
+DEPLOYED_DIR = "data/07_model_output/deployed"
+INDEX_PATH = f"{DEPLOYED_DIR}/annoy_index.ann"
 
 
 def split_train_test(interactions, params: Dict):
@@ -252,6 +254,7 @@ def build_index(item_factors, params: Dict):
 
     annoy_idx.build(n_trees)
     # save
+    os.makedirs(DEPLOYED_DIR)
     annoy_dataset = MlflowArtifactDataSet(data_set={
         "type": KedroAnnoyIndex,
         "filepath": INDEX_PATH,
